@@ -142,3 +142,19 @@ Die Steuerung speichert jede Änderung mit `999` im EEPROM, das nur begrenzt oft
 - die normalen Abfragen sind während des Schreibens pausiert (`set_paused`), danach wird zurückgelesen
 
 Bitte nicht aus Automationen verwenden, die häufig schalten. Hängt die Steuerung nach einem abgebrochenen Schreibvorgang im Programmiermodus, hilft ein Senden von `3401;0` und `999`.
+
+## Einstellungen lesen und ändern (optional, mit Schutz)
+
+Die Datei `luxtronik-v1-esp32-settings.yaml` baut auf dem Modus-Beispiel auf und liest zusätzlich die Einstellungen der Steuerung (Befehle `3400` Heizkurve und `2100` Hysterese/Grenzwerte, Werte in Zehntelgrad):
+
+- Heizkurve: Abweichung Rücklauf, Endpunkt, Parallelverschiebung, Nachtabsenkung
+- Hysterese Heizung und Brauchwasser, Rücklaufbegrenzung, TR-Erhöhung max, Freigaben, Abtau- und Grenztemperaturen (als Diagnose-Sensoren)
+
+Ändern lassen sich (als Zahlenfelder) die vier Heizkurvenwerte, beide Hysteresen und der Brauchwasser-Sollwert (`3501`). Dafür gelten zusätzlich zu den Schutzmaßnahmen oben:
+
+- Der Schalter "Einstellungen entsperren" muss eingeschaltet sein; er gilt 10 Minuten und wird nach jedem Schreibvorgang wieder ausgeschaltet (nach einem Neustart immer aus)
+- der Wert muss im erlaubten Bereich liegen und der aktuelle Wert vor kurzem gelesen worden sein
+- die komplette Zeile (`3401;N;...`) wird aus den zuletzt gelesenen Werten gebaut, nur ein Wert wird ersetzt
+- nach dem Speichern (`999`) wird zurückgelesen; "Letzter Schreibvorgang" zeigt `OK, zurueckgelesen: ...` oder eine Warnung
+
+Auch hier gilt: nicht aus Automationen verwenden.

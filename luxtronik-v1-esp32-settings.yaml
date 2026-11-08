@@ -1,0 +1,657 @@
+# Beispiel: Betriebsart UND Einstellungen (Heizkurve, Hysterese, Brauchwasser-Soll) aus Home Assistant lesen/aendern.
+#
+# Wie luxtronik-v1-esp32.yaml, plus zwei Auswahlfelder "Modus Heizung" / "Modus Warmwasser".
+# Schutz vor unnoetigen EEPROM-Schreibzugriffen der Steuerung (jeder Schreibvorgang wird mit 999 gespeichert):
+#  - es wird NIE beim Booten oder beim Zuruecklesen geschrieben (set_action laeuft nur bei Bedienung)
+#  - nur wenn der aktuelle Wert gelesen wurde und sich vom Wunsch unterscheidet
+#  - Sperrfrist 5 Minuten zwischen zwei Schreibvorgaengen
+#  - Abfragen sind waehrend des Schreibens pausiert (set_paused), danach wird zurueckgelesen
+# Einstellungen (Heizkurve, Hysterese, Brauchwasser-Soll) sind zusaetzlich mit dem Schalter
+# "Einstellungen entsperren" gesichert (10 min gueltig, wird nach jedem Schreibvorgang wieder ausgeschaltet).
+# Nicht aus Automationen verwenden, die oft schalten.
+#
+esphome:
+  name: luxtronik_v1
+  friendly_name: Luxtronik_v1 Waermepumpe
+
+esp32:
+  board: esp32dev
+  framework:
+    type: esp-idf
+
+wifi:
+  ssid: !secret wifi_ssid
+  password: !secret wifi_password
+  fast_connect: True
+
+# Enable logging
+logger:
+  # disable serial loggin
+  baud_rate: 0
+
+web_server:
+
+# Enable Home Assistant API
+api:
+
+# Enable MQTT
+#mqtt:
+#  broker: <your mqtt broker ip>
+
+ota:
+  platform: esphome
+
+uart:
+  id: uart_bus
+  rx_pin: GPIO16
+  tx_pin: GPIO17
+  baud_rate: 57600
+  data_bits: 8
+  parity: NONE
+  stop_bits: 1
+#  debug:
+#    direction: BOTH
+#    dummy_receiver: false
+
+external_components:
+  - source:
+      type: git
+      url: https://github.com/cbrosius/luxtronik_v1
+      ref: main
+    components: [ luxtronik_v1_component ]
+    refresh: 0s
+  # Die Funktionen set_paused()/is_paused() der Komponente werden vom Script benoetigt.
+
+luxtronik_v1_component:
+  id: luxtronik_v1_component_1
+  temperatur_vorlauf:
+    name: "Temperatur Vorlauf"
+    id: temperatur_vorlauf
+  temperatur_ruecklauf:
+    name: "Temperatur Rücklauf"
+    id: temperatur_ruecklauf
+  temperatur_ruecklauf_soll:
+    name: "Temperatur Rücklauf Soll"
+    id: temperatur_ruecklauf_soll
+  temperatur_heissgas:
+    name: "Temperatur Heissgas"
+    id: temperatur_heissgas
+  temperatur_aussen:
+    name: "Temperatur Aussen"
+    id: temperatur_aussen
+  temperatur_brauchwasser:
+    name: "Temperatur Brauchwasser"
+    id: temperatur_brauchwasser
+  temperatur_brauchwasser_soll:
+    name: "Temperatur Brauchwasser Soll"
+    id: temperatur_brauchwasser_soll
+  temperatur_waermequelle_eingang:
+    name: "Temperatur Wärmequelle Eingang"
+    id: temperatur_waermequelle_eingang
+  temperatur_kaeltekreis:
+    name: "Temperatur Kältekreis"
+    id: temperatur_kaeltekreis
+  temperatur_mischkreis1_vorlauf:
+    name: "Temperatur Mischkreis1 Vorlauf"
+    id: temperatur_mischkreis1_vorlauf
+  temperatur_mischkreis1_vorlauf_soll:
+    name: "Temperatur Mischkreis1 Vorlauf Soll"
+    id: temperatur_mischkreis1_vorlauf_soll
+  temperatur_raumstation:
+    name: "Temperatur Raumstation"
+    id: temperatur_raumstation
+  eingang_abtau_soledruck_durchfluss:
+    name: "Eingang Abtau Soledruck Durchfluss"
+    id: eingang_abtau_soledruck_durchfluss
+  eingang_sperrzeit_evu:
+    name: "Eingang Sperrzeit EVU"
+    id: eingang_sperrzeit_evu
+  eingang_hochdruckpressostat:
+    name: "Eingang Hochdruckpressostat"
+    id: eingang_hochdruckpressostat
+  eingang_motorschutz:
+    name: "Eingang Motorschutz"
+    id: eingang_motorschutz
+  eingang_niederdruckpressostat:
+    name: "Eingang Niederdruckpressostat"
+    id: eingang_niederdruckpressostat
+  eingang_fremdstromanode:
+    name: "Eingang Fremdstromanode"
+    id: eingang_fremdstromanode
+  # Output sensors
+  ausgang_abtauventil:
+    name: "Ausgang Abtauventil"
+    id: ausgang_abtauventil
+  ausgang_brauchwasserpumpe:
+    name: "Ausgang Brauchwasserpumpe"
+    id: ausgang_brauchwasserpumpe
+  ausgang_fussbodenheizungspumpe:
+    name: "Ausgang Fußbodenheizungspumpe"
+    id: ausgang_fussbodenheizungspumpe
+  ausgang_heizungspumpe:
+    name: "Ausgang Heizungspumpe"
+    id: ausgang_heizungspumpe
+  ausgang_mischer_1_auf:
+    name: "Ausgang Mischer 1 Auf"
+    id: ausgang_mischer_1_auf
+  ausgang_mischer_1_zu:
+    name: "Ausgang Mischer 1 Zu"
+    id: ausgang_mischer_1_zu
+  ausgang_ventilator_waermepumpe:
+    name: "Ausgang Ventilator Wärmepumpe"
+    id: ausgang_ventilator_waermepumpe
+  ausgang_ventilator_brunnen:
+    name: "Ausgang Ventilator Brunnen"
+    id: ausgang_ventilator_brunnen
+  ausgang_verdichter_1:
+    name: "Ausgang Verdichter 1"
+    id: ausgang_verdichter_1
+  ausgang_verdichter_2:
+    name: "Ausgang Verdichter 2"
+    id: ausgang_verdichter_2
+  ausgang_zirkulationspumpe:
+    name: "Ausgang Zirkulationspumpe"
+    id: ausgang_zirkulationspumpe
+  ausgang_zweiter_waermeerzeuger:
+    name: "Ausgang Zweiter Wärmeerzeuger"
+    id: ausgang_zweiter_waermeerzeuger
+  ausgang_zweiter_waermeerzeuger_stoerung:
+    name: "Ausgang Zweiter Wärmeerzeuger Störung"
+    id: ausgang_zweiter_waermeerzeuger_stoerung
+  # Betriebsart (3405 / 3505): numerisch (mit id fuer die Select-Anzeige) und als Text
+  modus_heizung_numerisch:
+    name: "Modus Heizung numerisch"
+    id: wp_modus_heizung
+    on_value:
+      then:
+        - lambda: |-
+            static const char *const o[] = {"Auto", "ZWE", "Party", "Ferien", "aus"};
+            int i = (int) x;
+            if (i >= 0 && i <= 4) id(mode_heizung).publish_state(o[i]);
+  modus_heizung:
+    name: "Modus Heizung Text"
+  modus_warmwasser_numerisch:
+    name: "Modus Warmwasser numerisch"
+    id: wp_modus_warmwasser
+    on_value:
+      then:
+        - lambda: |-
+            static const char *const o[] = {"Auto", "ZWE", "Party", "Ferien", "aus"};
+            int i = (int) x;
+            if (i >= 0 && i <= 4) id(mode_warmwasser).publish_state(o[i]);
+  modus_warmwasser:
+    name: "Modus Warmwasser Text"
+    
+  # --- Einstellungen der Steuerung (lesen: 3400 Heizkurve, 2100 Hysterese/Grenzwerte) ---
+  hk_abweichung_ruecklauf:
+    name: "Heizkurve Abweichung Rücklauf"
+    id: s_hk_abw
+  hk_endpunkt:
+    name: "Heizkurve Endpunkt"
+    id: s_hk_endpunkt
+  hk_parallelverschiebung:
+    name: "Heizkurve Parallelverschiebung"
+    id: s_hk_parav
+  hk_nachtabsenkung:
+    name: "Heizkurve Nachtabsenkung"
+    id: s_hk_nachtabs
+  set_ruecklauf_begrenzung:
+    name: "Einstellung Ruecklauf Begrenzung"
+    entity_category: diagnostic
+  set_hysterese_heizung:
+    name: "Einstellung Hysterese Heizung"
+    id: s_hyst_hk
+    unit_of_measurement: "K"
+  set_ruecklauferhoehung_max:
+    name: "Einstellung Ruecklauferhoehung Max"
+    unit_of_measurement: "K"
+    entity_category: diagnostic
+  set_freigabe_2_verdichter:
+    name: "Einstellung Freigabe 2 Verdichter"
+    entity_category: diagnostic
+  set_freigabe_zwe:
+    name: "Einstellung Freigabe ZWE"
+    entity_category: diagnostic
+  set_temperatur_luftabtauung:
+    name: "Einstellung Temperatur Luftabtauung"
+    entity_category: diagnostic
+  set_thermische_desinfektion:
+    name: "Einstellung Thermische Desinfektion Soll"
+    entity_category: diagnostic
+  set_hysterese_brauchwasser:
+    name: "Einstellung Hysterese Brauchwasser"
+    id: s_hyst_bw
+    unit_of_measurement: "K"
+  set_vorlauf_2_verdichter_bw:
+    name: "Einstellung Vorlauf 2 Verdichter BW"
+    entity_category: diagnostic
+  set_aussentemperatur_max:
+    name: "Einstellung Aussentemperatur Max"
+    entity_category: diagnostic
+  set_aussentemperatur_min:
+    name: "Einstellung Aussentemperatur Min"
+    entity_category: diagnostic
+  set_waermequelle_min:
+    name: "Einstellung Waermequelle Min"
+    entity_category: diagnostic
+  set_heissgas_max:
+    name: "Einstellung Heissgas Max"
+    entity_category: diagnostic
+  set_luftabtauung_ende:
+    name: "Einstellung Luftabtauung Ende"
+    entity_category: diagnostic
+  set_absenkung_bis:
+    name: "Einstellung Absenkung Bis"
+    entity_category: diagnostic
+  set_vorlauf_max:
+    name: "Einstellung Vorlauf Max"
+    entity_category: diagnostic
+
+sensor:
+  - platform: uptime
+    name: "Uptime Sensor"
+
+globals:
+  - id: last_write_ms          # Zeitpunkt des letzten Schreibvorgangs (Sperrfrist)
+    type: uint32_t
+    initial_value: '0'
+  - id: write_count            # Schreibvorgaenge seit Boot (nur zur Anzeige)
+    type: int
+    initial_value: '0'
+  - id: w_ok
+    type: bool
+    initial_value: 'false'
+  - id: w_cmd
+    type: int
+    initial_value: '0'
+  - id: w_val
+    type: int
+    initial_value: '0'
+  - id: w_rd
+    type: int
+    initial_value: '0'
+  - id: w_pos
+    type: int
+    initial_value: '0'
+  - id: w_line
+    type: std::string
+    initial_value: '""'
+
+# Ein Schreibvorgang = dieselbe Befehlsfolge wie bisher, aber abgesichert:
+#  - nur wenn der aktuelle Wert von der Steuerung gelesen wurde und sich der Wunsch davon unterscheidet
+#  - Sperrfrist 5 Minuten zwischen zwei Schreibvorgaengen
+#  - Abfragen werden waehrenddessen pausiert (kein Durcheinander auf der Leitung)
+#  - kein Schreiben beim Booten oder beim Zuruecklesen
+script:
+  - id: write_mode
+    mode: single
+    parameters:
+      kind: int          # 0 = Heizung (3406), 1 = Warmwasser (3506)
+      option: std::string
+    then:
+      - lambda: |-
+          static const char *const o[] = {"Auto", "ZWE", "Party", "Ferien", "aus"};
+          int idx = -1;
+          for (int k = 0; k < 5; k++) if (option == o[k]) idx = k;
+          sensor::Sensor *cur = (kind == 0) ? id(wp_modus_heizung) : id(wp_modus_warmwasser);
+          bool valid = idx >= 0 && cur->has_state();
+          bool changed = valid && ((int) cur->state != idx);
+          bool cooled = id(last_write_ms) == 0 || (millis() - id(last_write_ms)) > 300000UL;
+          bool idle = !id(luxtronik_v1_component_1)->is_paused();
+          id(w_ok) = valid && changed && cooled && idle;
+          id(w_cmd) = (kind == 0) ? 3406 : 3506;
+          id(w_val) = idx;
+          if (!id(w_ok)) {
+            ESP_LOGW("write_mode", "Schreiben verworfen (gueltig=%d, geaendert=%d, Sperrfrist ok=%d)", valid, changed, cooled);
+            if (valid) {
+              if (kind == 0) id(mode_heizung).publish_state(o[(int) cur->state]);
+              else id(mode_warmwasser).publish_state(o[(int) cur->state]);
+            }
+          }
+      - if:
+          condition:
+            lambda: 'return id(w_ok);'
+          then:
+            - lambda: |-
+                id(luxtronik_v1_component_1)->set_paused(true);
+                id(last_write_ms) = millis();
+                id(write_count)++;
+                ESP_LOGW("write_mode", "SCHREIBE %d;1;%d", id(w_cmd), id(w_val));
+            - delay: 2s          # laufende Antwort abwarten
+            - uart.write:
+                data: !lambda |-
+                  char b[16]; int n = snprintf(b, sizeof(b), "%d\r\n", id(w_cmd));
+                  return std::vector<uint8_t>(b, b + n);
+            - delay: 2s
+            - uart.write:
+                data: !lambda |-
+                  char b[24]; int n = snprintf(b, sizeof(b), "%d;1;%d\r\n", id(w_cmd), id(w_val));
+                  return std::vector<uint8_t>(b, b + n);
+            - delay: 3s
+            - uart.write:
+                data: "999\r\n"    # speichern
+            - delay: 3s
+            # 3405 / 3505 zuruecklesen
+            - uart.write:
+                data: !lambda |-
+                  char b[16]; int n = snprintf(b, sizeof(b), "%d\r\n", id(w_cmd) - 1);
+                  return std::vector<uint8_t>(b, b + n);
+            - delay: 3s
+            - lambda: |-
+                id(luxtronik_v1_component_1)->set_paused(false);
+                sensor::Sensor *cur = (id(w_cmd) == 3406) ? id(wp_modus_heizung) : id(wp_modus_warmwasser);
+                if (!cur->has_state() || (int) cur->state != id(w_val))
+                  ESP_LOGW("write_mode", "Rueckgelesener Wert weicht ab - bitte pruefen");
+                id(luxtronik_v1_component_1)->update();
+
+  # Freigabe-Timer: Einstellungen sind nur 10 Minuten nach dem Entsperren schreibbar
+  - id: unlock_timer
+    mode: restart
+    then:
+      - delay: 10min
+      - switch.turn_off: sw_unlock
+
+  # Einstellungen schreiben (Heizkurve 3401, Hysterese 2101, Brauchwasser-Soll 3501):
+  #  - nur wenn entsperrt, Wert im erlaubten Bereich, aktueller Wert frisch gelesen und anders
+  #  - die komplette Zeile wird aus den zuletzt gelesenen Werten gebaut, nur EIN Wert ersetzt
+  #  - 5 Minuten Sperrfrist (gemeinsam mit den Modi); die Freigabe wird danach wieder entzogen
+  - id: write_setting
+    mode: single
+    parameters:
+      kind: int          # 0 = Array-Befehl (3401/2101), 1 = Brauchwasser-Soll (3501)
+      read_cmd: int      # 3400 oder 2100 (nur kind 0)
+      pos: int           # Position des Wertes in der Antwort (nur kind 0)
+      desired: int       # Zielwert in Zehntel Grad
+      lo: int            # untere Grenze (Zehntel)
+      hi: int            # obere Grenze (Zehntel)
+      label: std::string
+    then:
+      - lambda: |-
+          auto *c = id(luxtronik_v1_component_1);
+          int cur = 0;
+          bool have = false;
+          if (kind == 1) {
+            if (id(temperatur_brauchwasser_soll).has_state()) { cur = (int) lroundf(id(temperatur_brauchwasser_soll).state * 10.0f); have = true; }
+          } else {
+            have = c->get_raw_setting(read_cmd, pos, &cur);
+          }
+          bool unlocked = id(sw_unlock).state;
+          bool inrange = desired >= lo && desired <= hi;
+          bool changed = have && cur != desired;
+          bool cooled = id(last_write_ms) == 0 || (millis() - id(last_write_ms)) > 300000UL;
+          bool idle = !c->is_paused();
+          std::string line = (kind == 1) ? ("3501;1;" + std::to_string(desired)) : c->build_write_line(read_cmd, pos, desired);
+          id(w_ok) = unlocked && inrange && have && changed && cooled && idle && !line.empty();
+          id(w_cmd) = (kind == 1) ? 3501 : (read_cmd + 1);
+          id(w_val) = desired;
+          id(w_rd) = read_cmd;
+          id(w_pos) = pos;
+          id(w_line) = line;
+          if (!id(w_ok)) {
+            const char *why = !unlocked ? "gesperrt (erst 'Einstellungen entsperren')" :
+                              !inrange ? "ausserhalb des erlaubten Bereichs" :
+                              !have ? "aktueller Wert nicht frisch gelesen" :
+                              !changed ? "Wert unveraendert" :
+                              !cooled ? "Sperrfrist 5 min" :
+                              !idle ? "anderer Schreibvorgang laeuft" : "Zeile nicht erzeugbar";
+            ESP_LOGW("write_setting", "%s: verworfen - %s", label.c_str(), why);
+            id(write_status).publish_state(label + ": verworfen - " + why);
+          }
+      - if:
+          condition:
+            lambda: 'return id(w_ok);'
+          then:
+            - lambda: |-
+                id(luxtronik_v1_component_1)->set_paused(true);
+                id(last_write_ms) = millis();
+                id(write_count)++;
+                ESP_LOGW("write_setting", "SCHREIBE %s", id(w_line).c_str());
+                id(write_status).publish_state("schreibe " + id(w_line));
+            - switch.turn_off: sw_unlock          # Freigabe sofort wieder entziehen
+            - delay: 2s
+            - uart.write:
+                data: !lambda |-
+                  char b[16]; int n = snprintf(b, sizeof(b), "%d\r\n", id(w_cmd));
+                  return std::vector<uint8_t>(b, b + n);
+            - delay: 2s
+            - uart.write:
+                data: !lambda |-
+                  std::string s = id(w_line) + "\r\n";
+                  return std::vector<uint8_t>(s.begin(), s.end());
+            - delay: 3s
+            - uart.write:
+                data: "999\r\n"    # speichern
+            - delay: 3s
+            - lambda: |-
+                id(luxtronik_v1_component_1)->set_paused(false);
+                id(luxtronik_v1_component_1)->update();
+            - delay: 30s            # Abfragekette laeuft einmal durch, Werte werden neu gelesen
+            - lambda: |-
+                int cur = 0;
+                bool ok = false;
+                if (id(w_cmd) == 3501) {
+                  ok = id(temperatur_brauchwasser_soll).has_state() && (int) lroundf(id(temperatur_brauchwasser_soll).state * 10.0f) == id(w_val);
+                } else {
+                  ok = id(luxtronik_v1_component_1)->get_raw_setting(id(w_rd), id(w_pos), &cur) && cur == id(w_val);
+                }
+                if (ok) {
+                  ESP_LOGI("write_setting", "Rueckgelesen: OK");
+                  id(write_status).publish_state("OK, zurueckgelesen: " + id(w_line));
+                } else {
+                  ESP_LOGW("write_setting", "Rueckgelesener Wert weicht ab - bitte pruefen");
+                  id(write_status).publish_state("ACHTUNG: Rueckgelesener Wert weicht ab - bitte pruefen");
+                }
+
+select:
+  - platform: template
+    name: "Modus Heizung"
+    id: mode_heizung
+    options: ["Auto", "ZWE", "Party", "Ferien", "aus"]   # "Ferien" laut Doku evtl. nicht implementiert
+    optimistic: false            # Anzeige kommt nur aus dem gelesenen Wert
+    set_action:                  # laeuft NUR bei Bedienung (HA/Web), nie beim Booten
+      - script.execute:
+          id: write_mode
+          kind: 0
+          option: !lambda 'return x;'
+  - platform: template
+    name: "Modus Warmwasser"
+    id: mode_warmwasser
+    options: ["Auto", "ZWE", "Party", "Ferien", "aus"]
+    optimistic: false
+    set_action:
+      - script.execute:
+          id: write_mode
+          kind: 1
+          option: !lambda 'return x;'
+
+number:
+  - platform: template
+    name: "Heizkurve Abweichung Ruecklauf"
+    id: n_hk_abw
+    min_value: -5.0
+    max_value: 5.0
+    step: 0.5
+    unit_of_measurement: "°C"
+    mode: box
+    update_interval: 30s
+    lambda: |-
+      if (id(s_hk_abw).has_state()) return id(s_hk_abw).state;
+      return {};
+    set_action:
+      - script.execute:
+          id: write_setting
+          kind: 0
+          read_cmd: 3400
+          pos: 1
+          desired: !lambda 'return (int) lroundf(x * 10.0f);'
+          lo: -50
+          hi: 50
+          label: "Abweichung Ruecklauf"
+  - platform: template
+    name: "Heizkurve Endpunkt"
+    id: n_hk_endpunkt
+    min_value: 20.0
+    max_value: 70.0
+    step: 0.5
+    unit_of_measurement: "°C"
+    mode: box
+    update_interval: 30s
+    lambda: |-
+      if (id(s_hk_endpunkt).has_state()) return id(s_hk_endpunkt).state;
+      return {};
+    set_action:
+      - script.execute:
+          id: write_setting
+          kind: 0
+          read_cmd: 3400
+          pos: 2
+          desired: !lambda 'return (int) lroundf(x * 10.0f);'
+          lo: 200
+          hi: 700
+          label: "Endpunkt"
+  - platform: template
+    name: "Heizkurve Parallelverschiebung"
+    id: n_hk_parav
+    min_value: 5.0
+    max_value: 35.0
+    step: 0.5
+    unit_of_measurement: "°C"
+    mode: box
+    update_interval: 30s
+    lambda: |-
+      if (id(s_hk_parav).has_state()) return id(s_hk_parav).state;
+      return {};
+    set_action:
+      - script.execute:
+          id: write_setting
+          kind: 0
+          read_cmd: 3400
+          pos: 3
+          desired: !lambda 'return (int) lroundf(x * 10.0f);'
+          lo: 50
+          hi: 350
+          label: "Parallelverschiebung"
+  - platform: template
+    name: "Heizkurve Nachtabsenkung"
+    id: n_hk_nachtabs
+    min_value: -15.0
+    max_value: 0.0
+    step: 0.5
+    unit_of_measurement: "°C"
+    mode: box
+    update_interval: 30s
+    lambda: |-
+      if (id(s_hk_nachtabs).has_state()) return id(s_hk_nachtabs).state;
+      return {};
+    set_action:
+      - script.execute:
+          id: write_setting
+          kind: 0
+          read_cmd: 3400
+          pos: 4
+          desired: !lambda 'return (int) lroundf(x * 10.0f);'
+          lo: -150
+          hi: 0
+          label: "Nachtabsenkung"
+  - platform: template
+    name: "Hysterese Heizung"
+    id: n_hyst_hk
+    min_value: 0.5
+    max_value: 3.0
+    step: 0.5
+    unit_of_measurement: "K"
+    mode: box
+    update_interval: 30s
+    lambda: |-
+      if (id(s_hyst_hk).has_state()) return id(s_hyst_hk).state;
+      return {};
+    set_action:
+      - script.execute:
+          id: write_setting
+          kind: 0
+          read_cmd: 2100
+          pos: 2
+          desired: !lambda 'return (int) lroundf(x * 10.0f);'
+          lo: 5
+          hi: 30
+          label: "Hysterese Heizung"
+  - platform: template
+    name: "Hysterese Brauchwasser"
+    id: n_hyst_bw
+    min_value: 1.0
+    max_value: 30.0
+    step: 1
+    unit_of_measurement: "K"
+    mode: box
+    update_interval: 30s
+    lambda: |-
+      if (id(s_hyst_bw).has_state()) return id(s_hyst_bw).state;
+      return {};
+    set_action:
+      - script.execute:
+          id: write_setting
+          kind: 0
+          read_cmd: 2100
+          pos: 8
+          desired: !lambda 'return (int) lroundf(x * 10.0f);'
+          lo: 10
+          hi: 300
+          label: "Hysterese Brauchwasser"
+  - platform: template
+    name: "Brauchwasser Soll"
+    id: n_bw_soll
+    min_value: 30.0
+    max_value: 65.0
+    step: 0.5
+    unit_of_measurement: "°C"
+    mode: box
+    update_interval: 30s
+    lambda: |-
+      if (id(temperatur_brauchwasser_soll).has_state()) return id(temperatur_brauchwasser_soll).state;
+      return {};
+    set_action:
+      - script.execute:
+          id: write_setting
+          kind: 1
+          read_cmd: 0
+          pos: 0
+          desired: !lambda 'return (int) lroundf(x * 10.0f);'
+          lo: 300
+          hi: 650
+          label: "Brauchwasser-Soll"
+
+switch:
+  # Schreibsperre fuer Einstellungen (Heizkurve, Hysterese, Brauchwasser-Soll)
+  # Nach dem Neustart immer AUS, schaltet sich nach 10 min bzw. nach jedem Schreibvorgang selbst aus.
+  - platform: template
+    name: "Einstellungen entsperren"
+    id: sw_unlock
+    optimistic: true
+    restore_mode: ALWAYS_OFF
+    entity_category: config
+    turn_on_action:
+      - script.execute: unlock_timer
+    turn_off_action:
+      - script.stop: unlock_timer
+
+button:
+  - platform: template
+    name: " UART prüfen"
+    id: check_uart
+    on_press:
+      then:
+        - uart.write:
+            data: "\r\n"
+  - platform: template
+    name: " Werte manuell abfragen"
+    id: ask_for_values
+    on_press:
+      then:
+        - uart.write:
+            data: "1100\r\n"
+
+text_sensor:
+  - platform: template
+    name: "Letzter Schreibvorgang"
+    id: write_status
+    entity_category: diagnostic

@@ -110,6 +110,14 @@ void LuxtronikV1Component::parse_message_(const char* message) {
         this->defer([this, msg]() {
             parse_operatinghours_message_(msg.c_str());
         });
+    } else if (prefix == "3400") {
+        this->defer([this, msg]() {
+            parse_settings_message_(msg.c_str(), 3400);
+        });
+    } else if (prefix == "2100") {
+        this->defer([this, msg]() {
+            parse_settings_message_(msg.c_str(), 2100);
+        });
     }
 }
 
@@ -688,6 +696,10 @@ void LuxtronikV1Component::parse_operatinghours_message_(const char* message) {
     if (idx < values.size()) publish_hours(betriebsstunden_zweiter_waermeerzeuger_2_, values[idx++], "Betriebsstunden Zweiter Waermeerzeuger 2");
     if (idx < values.size()) publish_hours(betriebsstunden_waermepumpe_, values[idx++], "Betriebsstunden Waermepumpe");
 
+    // Einstellungen (nur lesen) anschliessend abfragen
+    if (this->want_[0]) this->send_request_("3400\r\n");
+    else if (this->want_[1]) this->send_request_("2100\r\n");
+
 }
 
 void LuxtronikV1Component::dump_config() {
@@ -805,6 +817,73 @@ std::string LuxtronikV1Component::get_error_description_(int error_code) {
         case 799: return "ModBus ASB - Keine ModBus-Kommunikation mit ASB-Platine.";
         default: return "Unbekannter Fehler";
     }
+}
+
+// ---------------------------------------------------------------------------
+// Einstellungen: 3400 (Heizkurve) / 2100 (Hysterese, Grenzwerte) - nur Lesen
+// ---------------------------------------------------------------------------
+void LuxtronikV1Component::set_setting_sensor(int read_cmd, int pos, sensor::Sensor *sens) {
+    int t = (read_cmd == 3400) ? 0 : 1;
+    if (pos < 1 || pos >= 24) return;
+    this->setting_sensors_[t][pos] = sens;
+    this->want_[t] = true;
+}
+
+void LuxtronikV1Component::parse_settings_message_(const char *message, int read_cmd) {
+    std::string msg(message);
+    int t = (read_cmd == 3400) ? 0 : 1;
+    // Echo des Befehls ("3400") oder zu kurze Zeile: ignorieren, keine Kette fortsetzen
+    if (msg.size() < 7 || msg[4] != ';') return;
+
+    std::vector<int> values;
+    size_t start = 5;
+    size_t end = 0;
+    while ((end = msg.find(';', start)) != std::string::npos) {
+        values.push_back(std::atoi(msg.substr(start, end - start).c_str()));
+        start = end + 1;
+    }
+    if (start < msg.length()) values.push_back(std::atoi(msg.substr(start).c_str()));
+
+    // Plausibilitaet: values[0] = Anzahl, danach genau so viele Werte
+    if (values.empty() || values[0] < 1 || values[0] > 22 || (int) values.size() != values[0] + 1) {
+        ESP_LOGW(TAG, "Antwort %d unvollstaendig/unplausibel, verworfen: %s", read_cmd, message);
+        this->raw_ok_[t] = false;
+        return;
+    }
+    this->raw_[t] = values;
+    this->raw_ts_[t] = millis();
+    this->raw_ok_[t] = true;
+
+    for (int pos = 1; pos <= values[0] && pos < 24; pos++) {
+        sensor::Sensor *s = this->setting_sensors_[t][pos];
+        if (s != nullptr) s->publish_state(values[pos] / 10.0f);
+    }
+
+    // Kette: 3400 -> 2100
+    if (t == 0 && this->want_[1]) this->send_request_("2100\r\n");
+}
+
+bool LuxtronikV1Component::get_raw_setting(int read_cmd, int pos, int *out) {
+    int t = (read_cmd == 3400) ? 0 : 1;
+    if (!this->raw_ok_[t]) return false;
+    if (millis() - this->raw_ts_[t] > 300000UL) return false;  // aelter als 5 min
+    if (pos < 1 || pos >= (int) this->raw_[t].size()) return false;
+    *out = this->raw_[t][pos];
+    return true;
+}
+
+std::string LuxtronikV1Component::build_write_line(int read_cmd, int pos, int value_tenths) {
+    int t = (read_cmd == 3400) ? 0 : 1;
+    int dummy;
+    if (!this->get_raw_setting(read_cmd, pos, &dummy)) return "";
+    std::vector<int> v = this->raw_[t];
+    v[pos] = value_tenths;
+    std::string line = std::to_string(read_cmd + 1);   // 3401 / 2101
+    for (size_t i = 0; i < v.size(); i++) {
+        line += ';';
+        line += std::to_string(v[i]);
+    }
+    return line;
 }
 
 }  // namespace luxtronik_v1_component

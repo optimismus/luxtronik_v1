@@ -83,6 +83,35 @@ CONF_BETRIEBSSTUNDEN_ZWEITER_WAERMEERZEUGER_1 = "betriebsstunden_zweiter_waermee
 CONF_BETRIEBSSTUNDEN_ZWEITER_WAERMEERZEUGER_2 = "betriebsstunden_zweiter_waermeerzeuger_2"
 CONF_BETRIEBSSTUNDEN_WAERMEPUMPE = "betriebsstunden_waermepumpe"
 
+
+# Einstellungen (nur Lesen): 3400 = Heizkurve, 2100 = Hysterese/Grenzwerte; Position = Stelle in der Antwort
+SETTINGS = {
+    "hk_abweichung_ruecklauf": (3400, 1),
+    "hk_endpunkt": (3400, 2),
+    "hk_parallelverschiebung": (3400, 3),
+    "hk_nachtabsenkung": (3400, 4),
+    "set_ruecklauf_begrenzung": (2100, 1),
+    "set_hysterese_heizung": (2100, 2),
+    "set_ruecklauferhoehung_max": (2100, 3),
+    "set_freigabe_2_verdichter": (2100, 4),
+    "set_freigabe_zwe": (2100, 5),
+    "set_temperatur_luftabtauung": (2100, 6),
+    "set_thermische_desinfektion": (2100, 7),
+    "set_hysterese_brauchwasser": (2100, 8),
+    "set_vorlauf_2_verdichter_bw": (2100, 9),
+    "set_aussentemperatur_max": (2100, 10),
+    "set_aussentemperatur_min": (2100, 11),
+    "set_waermequelle_min": (2100, 12),
+    "set_heissgas_max": (2100, 13),
+    "set_luftabtauung_ende": (2100, 14),
+    "set_absenkung_bis": (2100, 15),
+    "set_vorlauf_max": (2100, 16),
+}
+SETTING_SCHEMA = sensor.sensor_schema(
+    unit_of_measurement=UNIT_CELSIUS,
+    accuracy_decimals=1,
+)
+
 luxtronik_v1_component_ns = cg.esphome_ns.namespace("luxtronik_v1_component")
 LuxtronikV1Component = luxtronik_v1_component_ns.class_(
     "LuxtronikV1Component", cg.Component, uart.UARTDevice
@@ -184,6 +213,7 @@ CONFIG_SCHEMA = (
         cv.Optional(CONF_BETRIEBSSTUNDEN_ZWEITER_WAERMEERZEUGER_1): OPERATINGHOURS_SENSOR_SCHEMA,
         cv.Optional(CONF_BETRIEBSSTUNDEN_ZWEITER_WAERMEERZEUGER_2): OPERATINGHOURS_SENSOR_SCHEMA,
         cv.Optional(CONF_BETRIEBSSTUNDEN_WAERMEPUMPE): OPERATINGHOURS_SENSOR_SCHEMA,
+        **{cv.Optional(k): SETTING_SCHEMA for k in SETTINGS},
     })
     .extend(cv.COMPONENT_SCHEMA)
     .extend(uart.UART_DEVICE_SCHEMA)
@@ -452,3 +482,8 @@ async def to_code(config):
     if CONF_BETRIEBSSTUNDEN_WAERMEPUMPE in config:
         sens = await sensor.new_sensor(config[CONF_BETRIEBSSTUNDEN_WAERMEPUMPE])
         cg.add(var.set_betriebsstunden_waermepumpe_sensor(sens))
+
+    for key, (read_cmd, pos) in SETTINGS.items():
+        if key in config:
+            sens = await sensor.new_sensor(config[key])
+            cg.add(var.set_setting_sensor(read_cmd, pos, sens))

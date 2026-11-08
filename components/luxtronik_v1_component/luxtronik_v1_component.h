@@ -1,6 +1,9 @@
 #pragma once
 
 #include "esphome/core/component.h"
+#include "esphome/core/hal.h"
+#include <string>
+#include <vector>
 #include "esphome/components/uart/uart.h"
 #include "esphome/components/sensor/sensor.h"
 #include "esphome/components/text_sensor/text_sensor.h"
@@ -105,7 +108,22 @@ class LuxtronikV1Component : public uart::UARTDevice, public PollingComponent {
   void set_betriebsstunden_zweiter_waermeerzeuger_2_sensor(sensor::Sensor *sens) { betriebsstunden_zweiter_waermeerzeuger_2_ = sens; }
   void set_betriebsstunden_waermepumpe_sensor(sensor::Sensor *sens) { betriebsstunden_waermepumpe_ = sens; }
 
+  // --- Einstellungen: 3400 (Heizkurve) und 2100 (Hysterese u.a.) ---
+  // pos = 1-basierte Position des Wertes in der Antwort (nach der Anzahl)
+  void set_setting_sensor(int read_cmd, int pos, sensor::Sensor *sens);
+  // Liefert die komplette Schreibzeile (z.B. "3401;4;90;350;200;-50") mit einem ersetzten Wert,
+  // oder "" wenn die Rohwerte fehlen / zu alt / unplausibel sind.
+  std::string build_write_line(int read_cmd, int pos, int value_tenths);
+  // Aktueller Rohwert (Zehntel) oder false, wenn nicht verfuegbar/zu alt
+  bool get_raw_setting(int read_cmd, int pos, int *out);
+
   protected:
+  void parse_settings_message_(const char* message, int read_cmd);
+  std::vector<int> raw_[2];            // 0 = 3400, 1 = 2100; raw_[x][0] = Anzahl, danach Werte
+  uint32_t raw_ts_[2]{0, 0};
+  bool raw_ok_[2]{false, false};
+  bool want_[2]{false, false};
+  sensor::Sensor *setting_sensors_[2][24]{};
   float get_float_temp_(const std::string& value) { return std::atof(value.c_str()) / 10.0f; }
   void send_request_(const char *cmd);
   bool paused_{false};
